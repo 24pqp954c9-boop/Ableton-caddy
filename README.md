@@ -20,7 +20,7 @@ uv run make_app.py
 cp -R AbletonCaddy.app /Applications/
 ```
 
-Double-click **Ableton Caddy** to start the companion on port 8743 and open its tab. Opening it again while it runs just opens another tab. Quit from the Dock (or Activity Monitor), or use Ctrl+C when run from a terminal.
+Double-click **Ableton Caddy** to start the companion on port 8743 and open its tab. Opening it again while it runs just opens another tab. Quit it from the Dock icon (or Activity Monitor), or use Ctrl+C when run from a terminal. The app drives the bridge with `uv`, so install [uv](https://docs.astral.sh/uv/) first if you don't have it; downloaded bundles are unsigned — right-click → Open at Gatekeeper's first prompt.
 
 The app opens a local browser tab. Choose a track, adjust its suggested role if needed, and select a focus. Refresh after adding or reordering devices in Live. The launcher and this integration target the same 1.8.1 server release as the existing setup app. End the local server with Ctrl+C. [Ableton Live MCP server](https://github.com/wstierhout/ableton-live-mcp)
 
