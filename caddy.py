@@ -54,7 +54,7 @@ def refresh_error_message(error):
         cause = nested[0]
     timeouts = (TimeoutError, asyncio.TimeoutError)
     if isinstance(error, timeouts) or isinstance(cause, timeouts):
-        return "Timed out reading Live — the first run downloads the bridge; try Refresh again."
+        return "Timed out reading Live — the first refresh downloads the bridge via uvx and can be slow; retry or run the doctor command."
     if isinstance(cause, FileNotFoundError):
         return "The 'uvx' command was not found. Install uv."
     return "Could not read Live. Check that Live is open, AbletonMCP is active, and the server passes its doctor check. See the terminal for details."

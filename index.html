@@ -134,34 +134,31 @@ function hasSeq(hay, needle) {
   }
   return false;
 }
-// Recipe segments that are workflow steps, not insertable devices: shown with no verdict.
-const nonDeviceSteps = ["faders", "faders and pan", "clip gain", "duplicate clip",
-  "return track", "reverb return", "instrument", "audio effect rack",
-  "saved user library preset", "macro", "macros", "stock alternative"].map(toks);
-// Generic family words and the stock device names they usually stand for. Only these
-// words may match in reverse (short segment inside a longer device name) — conservatively.
-const deviceFamilies = {
-  eq: ["eq eight", "channel eq"],
-  compressor: ["compressor", "glue compressor"],
-  reverb: ["hybrid reverb", "reverb"],
-  delay: ["echo"],
-  filter: ["auto filter", "filter df8"],
-  saturator: ["saturator"],
-  utility: ["utility"],
-  chorus: ["chorus ensemble"],
-  spectrum: ["spectrum"],
+const norm = s => s.toLowerCase().replace(/-/g, " ");
+// Stock device name → family alias words/phrases a recipe may use instead of the full
+// name. Aliases match only as whole words (token subsequences), never inside a word.
+const deviceAliases = {
+  "eq eight": ["eq"], "channel eq": ["eq"],
+  "glue compressor": ["compressor"], "compressor": ["compressor"], "multiband dynamics": ["compressor"],
+  "echo": ["echo", "delay"], "chorus ensemble": ["chorus"],
+  "hybrid reverb": ["reverb"], "reverb": ["reverb"],
+  "auto filter": ["auto filter", "filter"], "filter df8": ["filter"],
 };
+// Stock device names that appear in the recipes; their words make a segment device-like.
+const stockDevices = ["EQ Eight", "Channel EQ", "Glue Compressor", "Compressor", "Multiband Dynamics",
+  "Utility", "Echo", "Chorus-Ensemble", "Saturator", "Drum Buss", "Hybrid Reverb", "Reverb",
+  "Auto Filter", "Filter DF8", "Spectrum", "Drum Rack", "Beat Repeat", "Audio Effect Rack",
+  "Granulator III", "Operator", "Wavetable"];
+const deviceWords = new Set([stockDevices, Object.keys(deviceAliases),
+  Object.values(deviceAliases).flat()].flat().map(norm).map(toks).flat());
+function deviceMatches(st, name) {
+  return hasSeq(st, toks(name)) ||
+    (deviceAliases[norm(name)] || []).some(a => hasSeq(st, toks(a)));
+}
 function segmentState(seg, devices) {
   const st = toks(seg);
-  if (nonDeviceSteps.some(pt => hasSeq(st, pt))) return seg;
-  if (devices.some(d => hasSeq(st, toks(d)))) return "✓ " + seg;
-  const possible = devices.filter(d => {
-    const dt = toks(d);
-    return st.some(t => Object.hasOwn(deviceFamilies, t) &&
-      (dt.includes(t) || deviceFamilies[t].some(a => hasSeq(dt, toks(a)))));
-  });
-  if (possible.length) return "~ " + seg + " (possible: device " +
-    possible.map(d => "'" + d + "'").join(", ") + ")";
+  if (devices.some(d => deviceMatches(st, d))) return "✓ " + seg;
+  if (!st.some(t => deviceWords.has(t))) return seg;  // names no device: workflow step, no verdict
   const thirdParty = /\b(vst|max for live|m4l|nova|pro-q|third-party)\b/i.test(seg);
   const tag = thirdParty ? "not in chain · VST example unverified" : "not in chain";
   return "+ " + seg + " (" + tag + ")";
@@ -174,7 +171,7 @@ function chainStatus(card, row) {
 
 function showNote(card, row) {
   const cardToks = toks(card[1]);
-  const existing = (row.devices || []).filter(name => hasSeq(cardToks, toks(name)));  // exact matches only
+  const existing = (row.devices || []).filter(name => deviceMatches(cardToks, name));  // same matcher as chain status
   const reuse = existing.length ? "Already in this chain: " + existing.join(", ") +
     ". Audition those devices first." : "";
   const st = chainStatus(card, row);
@@ -238,8 +235,9 @@ async function loadSession() {
     let data = {demo: true, session: demoSession};
     if (location.protocol !== "file:") {
       const reply = await fetch("/session", {headers: {"X-Ableton-Caddy": "1"}});
+      const text = await reply.text();
       let payload = null;
-      try { payload = await reply.json(); } catch {}
+      try { payload = JSON.parse(text); } catch {}
       if (!reply.ok) throw new Error((payload && payload.error) || "Server error (HTTP " + reply.status + ")");
       if (!payload || typeof payload !== "object") throw new Error("Server error (HTTP " + reply.status + ")");
       data = payload;
@@ -259,7 +257,7 @@ async function loadSession() {
     pruneRoleKeys();
     applySavedRole();
     status.textContent = (data.demo ? "Demo set" : "Live session") + " · " +
-      Math.round(session.tempo) + " BPM · " + tracks.length + " channels";
+      Math.round(session.tempo * 10) / 10 + " BPM · " + tracks.length + " channels";
     render();
   } catch (error) {
     status.textContent = (tracks.length ? "Showing the previous snapshot. " : "") + error.message;
@@ -317,7 +315,7 @@ el("export").addEventListener("click", () => {
   document.body.append(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 copy.addEventListener("click", async () => {
   try {
