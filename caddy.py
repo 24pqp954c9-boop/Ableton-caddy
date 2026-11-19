@@ -6,6 +6,8 @@
 import argparse
 import asyncio
 import json
+import os
+import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
@@ -13,6 +15,18 @@ import time
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent
+
+
+def uvx_command():
+    """Finder-launched apps get a minimal PATH; probe known uv install locations."""
+    found = shutil.which("uvx")
+    if found:
+        return found
+    for candidate in (Path.home() / ".local/bin/uvx", Path("/opt/homebrew/bin/uvx"),
+                      Path("/usr/local/bin/uvx"), Path.home() / ".cargo/bin/uvx"):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return "uvx"
 
 REFRESH_SOFT_TIMEOUT = 45  # seconds the uvx read itself may take
 REFRESH_HARD_TIMEOUT = 60  # seconds the request waits before calling a worker stuck
@@ -28,7 +42,7 @@ async def read_session():
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    server = StdioServerParameters(command="uvx", args=["mcp-server-ableton-live@1.8.1"])
+    server = StdioServerParameters(command=uvx_command(), args=["mcp-server-ableton-live@1.8.1"])
     async with stdio_client(server) as (reader, writer):
         async with ClientSession(reader, writer) as session:
             await session.initialize()
