@@ -228,12 +228,13 @@ function render() {
   }
 }
 
+const demoMode = location.protocol === "file:" || new URLSearchParams(location.search).has("demo");
 async function loadSession() {
   refresh.disabled = true;
   status.textContent = "Reading session…";
   try {
     let data = {demo: true, session: demoSession};
-    if (location.protocol !== "file:") {
+    if (!demoMode) {
       const reply = await fetch("/session", {headers: {"X-Ableton-Caddy": "1"}});
       const text = await reply.text();
       let payload = null;
@@ -327,7 +328,7 @@ copy.addEventListener("click", async () => {
     el("copy-status").textContent = "Copy the selected text manually.";
   }
 });
-refresh.hidden = location.protocol === "file:";
+refresh.hidden = demoMode;
 const savedFocus = store.get("caddy.focus");
 if (savedFocus && [...focus.options].some(o => o.value === savedFocus)) focus.value = savedFocus;
 loadSession();
