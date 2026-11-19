@@ -1,0 +1,47 @@
+name: Test and build Caddy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -v
+
+  build-macos:
+    needs: test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build app and zip
+        run: python make_app.py --zip
+      - name: Check the zip unpacks to a launchable app
+        run: |
+          mkdir check && ditto -x -k AbletonCaddy-*.zip check
+          test -x "check/AbletonCaddy.app/Contents/MacOS/AbletonCaddy"
+          plutil -lint "check/AbletonCaddy.app/Contents/Info.plist"
+          cmp index.html "check/AbletonCaddy.app/Contents/Resources/index.html"
+          cmp caddy.py "check/AbletonCaddy.app/Contents/Resources/caddy.py"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AbletonCaddy-macOS
+          path: AbletonCaddy-*.zip
+          if-no-files-found: error

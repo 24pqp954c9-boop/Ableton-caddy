@@ -4,7 +4,7 @@ Ableton Caddy is a local, read-only companion for Ableton Live. It reads the ope
 
 ## Try it
 
-Unzip the source bundle and open `index.html` directly in your browser to preview a 124 BPM example set.
+Download or clone this repository and open `index.html` directly in your browser to preview a 124 BPM example set. No install or Live needed.
 
 For a real set, first use Ableton MCP Link to install and activate the **AbletonMCP** Control Surface. Keep Live open with a set loaded. With `uv` installed, check the bridge and launch Caddy. The doctor command also accepts `--user-library` if your library has moved.
 
@@ -13,14 +13,14 @@ uvx mcp-server-ableton-live@1.8.1 doctor --json
 uv run caddy.py
 ```
 
-Prefer an app to terminal commands? Build the bundle and install it:
+Prefer an app to terminal commands? On GitHub, open **Actions > Test and build Caddy**, pick a successful run, download **AbletonCaddy-macOS**, unzip it and drag **AbletonCaddy.app** to Applications. Or build it yourself on a Mac:
 
 ```sh
-uv run make_app.py
+uv run make_app.py --zip
 cp -R AbletonCaddy.app /Applications/
 ```
 
-Double-click **Ableton Caddy** to start the companion on port 8743 and open its tab. Opening it again while it runs just opens another tab. Quit it from the Dock icon (or Activity Monitor), or use Ctrl+C when run from a terminal. The app drives the bridge with `uv`, so install [uv](https://docs.astral.sh/uv/) first if you don't have it; downloaded bundles are unsigned — right-click → Open at Gatekeeper's first prompt.
+Double-click **Ableton Caddy** to start the companion on port 8743 and open its tab. Opening it again while it runs just opens another tab. Quit it from the Dock icon (or Activity Monitor), or use Ctrl+C when run from a terminal. The app drives the bridge with `uv`, so install [uv](https://docs.astral.sh/uv/) first if you don't have it (the app shows an alert and quits if it can't find uv); downloaded bundles are unsigned — right-click → Open at Gatekeeper's first prompt.
 
 The app opens a local browser tab. Choose a track, adjust its suggested role if needed, and select a focus. Refresh after adding or reordering devices in Live. The launcher and this integration target the same 1.8.1 server release as the existing setup app. End the local server with Ctrl+C. [Ableton Live MCP server](https://github.com/wstierhout/ableton-live-mcp)
 

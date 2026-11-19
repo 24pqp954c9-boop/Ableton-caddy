@@ -2,18 +2,33 @@
 # requires-python = ">=3.10"
 # ///
 """Build AbletonCaddy.app from this folder: bundle, launcher, icon."""
-import struct, subprocess, zlib
+import argparse, struct, subprocess, sys, zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 APP = ROOT / "AbletonCaddy.app"
 PORT = 8743
+VERSION = "0.1.3"
 
 LAUNCHER = f"""#!/bin/sh
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PORT={PORT}
 URL="http://127.0.0.1:$PORT/"
-UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
+# Finder-launched apps get a minimal PATH (no Homebrew), so probe the usual
+# uv install locations, matching uvx_command() in caddy.py.
+UV="$(command -v uv)"
+if [ -z "$UV" ]; then
+  for CANDIDATE in "$HOME/.local/bin/uv" /opt/homebrew/bin/uv /usr/local/bin/uv "$HOME/.cargo/bin/uv"; do
+    if [ -x "$CANDIDATE" ]; then UV="$CANDIDATE"; break; fi
+  done
+fi
+if [ -z "$UV" ]; then
+  /usr/bin/osascript -e 'display alert "Ableton Caddy needs uv" message "Install uv from docs.astral.sh/uv, then open Ableton Caddy again."' >/dev/null 2>&1
+  echo "Ableton Caddy: uv was not found. Install it from https://docs.astral.sh/uv/" >&2
+  exit 1
+fi
+# Let caddy.py find the uvx that sits next to uv.
+PATH="$(dirname "$UV"):$PATH"; export PATH
 # Port-squat guard: only open the page if it carries Caddy's own fingerprint markers
 # from index.html. Port answering without them is someone else's server: refuse.
 PAGE="$(/usr/bin/curl -s --max-time 1 "$URL")"
@@ -35,7 +50,7 @@ PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundleIdentifier</key><string>com.m8.ableton-caddy</string>
 <key>CFBundleExecutable</key><string>AbletonCaddy</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleShortVersionString</key><string>{version}</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -62,12 +77,29 @@ def png(path, size):
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
                      + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
+def plist():
+    return PLIST.replace("{version}", VERSION)
+
+
+def zip_app():
+    """Zip with the .app folder at the top so unzipping yields a launchable app."""
+    archive = ROOT / f"AbletonCaddy-{VERSION}.zip"
+    archive.unlink(missing_ok=True)
+    subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(APP), str(archive)], check=True)
+    print(f"Zipped {archive}")
+
+
 def main():
     import shutil
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--zip", action="store_true", help="Also write AbletonCaddy-<version>.zip.")
+    args = parser.parse_args()
+    if sys.platform != "darwin":
+        sys.exit("make_app.py builds a macOS app and needs macOS (iconutil, ditto).")
     shutil.rmtree(APP, ignore_errors=True)
     macos, res = APP / "Contents" / "MacOS", APP / "Contents" / "Resources"
     macos.mkdir(parents=True); res.mkdir(parents=True)
-    (APP / "Contents" / "Info.plist").write_text(PLIST)
+    (APP / "Contents" / "Info.plist").write_text(plist())
     exe = macos / "AbletonCaddy"
     exe.write_text(LAUNCHER); exe.chmod(0o755)
     shutil.copy2(ROOT / "caddy.py", res / "caddy.py")
@@ -80,6 +112,8 @@ def main():
     subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(res / "AppIcon.icns")], check=True)
     shutil.rmtree(iconset)
     print(f"Built {APP}")
+    if args.zip:
+        zip_app()
 
 if __name__ == "__main__":
     main()
