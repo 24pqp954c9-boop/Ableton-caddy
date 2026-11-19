@@ -13,7 +13,7 @@ uvx mcp-server-ableton-live@1.8.1 doctor --json
 uv run caddy.py
 ```
 
-Prefer an app to terminal commands? On GitHub, open **Actions > Test and build Caddy**, pick a successful run, download **AbletonCaddy-macOS**, unzip it and drag **AbletonCaddy.app** to Applications. Or build it yourself on a Mac:
+Prefer an app to terminal commands? On GitHub, download the macOS build from [Releases](https://github.com/24pqp954c9-boop/Ableton-caddy/releases/latest), unzip it and drag **AbletonCaddy.app** to Applications. Or build it yourself on a Mac:
 
 ```sh
 uv run make_app.py --zip
