@@ -14,7 +14,8 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PORT={PORT}
 URL="http://127.0.0.1:$PORT/"
 UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
-if /usr/bin/curl -s -o /dev/null --max-time 1 "$URL"; then
+# Only treat the port as ours if Caddy's fingerprint header answers (port-squat guard).
+if /usr/bin/curl -s -o /dev/null -D - --max-time 1 "$URL" | grep -qi '^X-Ableton-Caddy-Server: 1'; then
   /usr/bin/open "$URL"; exit 0
 fi
 exec "$UV" run "$APP_DIR/Resources/caddy.py" --port $PORT

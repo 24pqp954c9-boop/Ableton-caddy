@@ -126,23 +126,55 @@ const rolePatterns = {
   synth: /\b(synths?|pads?|keys?|piano|arp|chords?)\b/i,
 };
 
-function deviceMatches(name, text) {
-  const t = text.toLowerCase(), n = name.toLowerCase().trim();
-  return !!n && t.includes(n);
+const toks = s => s.toLowerCase().replace(/-/g, " ").match(/[a-z0-9]+/g) || [];
+function hasSeq(hay, needle) {
+  if (!needle.length || needle.length > hay.length) return false;
+  for (let i = 0; i + needle.length <= hay.length; i++) {
+    if (needle.every((w, j) => hay[i + j] === w)) return true;
+  }
+  return false;
 }
-
+// Recipe segments that are workflow steps, not insertable devices: shown with no verdict.
+const nonDeviceSteps = ["faders", "faders and pan", "clip gain", "duplicate clip",
+  "return track", "reverb return", "instrument", "audio effect rack",
+  "saved user library preset", "macro", "macros", "stock alternative"].map(toks);
+// Generic family words and the stock device names they usually stand for. Only these
+// words may match in reverse (short segment inside a longer device name) — conservatively.
+const deviceFamilies = {
+  eq: ["eq eight", "channel eq"],
+  compressor: ["compressor", "glue compressor"],
+  reverb: ["hybrid reverb", "reverb"],
+  delay: ["echo"],
+  filter: ["auto filter", "filter df8"],
+  saturator: ["saturator"],
+  utility: ["utility"],
+  chorus: ["chorus ensemble"],
+  spectrum: ["spectrum"],
+};
+function segmentState(seg, devices) {
+  const st = toks(seg);
+  if (nonDeviceSteps.some(pt => hasSeq(st, pt))) return seg;
+  if (devices.some(d => hasSeq(st, toks(d)))) return "✓ " + seg;
+  const possible = devices.filter(d => {
+    const dt = toks(d);
+    return st.some(t => Object.hasOwn(deviceFamilies, t) &&
+      (dt.includes(t) || deviceFamilies[t].some(a => hasSeq(dt, toks(a)))));
+  });
+  if (possible.length) return "~ " + seg + " (possible: device " +
+    possible.map(d => "'" + d + "'").join(", ") + ")";
+  const thirdParty = /\b(vst|max for live|m4l|nova|pro-q|third-party)\b/i.test(seg);
+  const tag = thirdParty ? "not in chain · VST example unverified" : "not in chain";
+  return "+ " + seg + " (" + tag + ")";
+}
 function chainStatus(card, row) {
   if (!Array.isArray(row.devices)) return "";
-  return card[1].split("→").map(s => s.trim()).filter(Boolean).map(seg => {
-    if (row.devices.some(d => deviceMatches(d, seg))) return "✓ " + seg;
-    const thirdParty = /\b(vst|max for live|m4l|nova|pro-q|third-party)\b/i.test(seg);
-    const tag = thirdParty ? "not in chain · VST example unverified" : "not in chain";
-    return "+ " + seg + " (" + tag + ")";
-  }).join("  ·  ");
+  return card[1].split("→").map(s => s.trim()).filter(Boolean)
+    .map(seg => segmentState(seg, row.devices)).join("  ·  ");
 }
 
 function showNote(card, row) {
-  const existing = (row.devices || []).filter(name => deviceMatches(name, card[1]));
+  const cardToks = toks(card[1]);
+  const existing = (row.devices || []).filter(name => hasSeq(cardToks, toks(name)));  // exact matches only
   const reuse = existing.length ? "Already in this chain: " + existing.join(", ") +
     ". Audition those devices first." : "";
   const st = chainStatus(card, row);
@@ -206,8 +238,11 @@ async function loadSession() {
     let data = {demo: true, session: demoSession};
     if (location.protocol !== "file:") {
       const reply = await fetch("/session", {headers: {"X-Ableton-Caddy": "1"}});
-      data = await reply.json();
-      if (!reply.ok) throw new Error(data.error);
+      let payload = null;
+      try { payload = await reply.json(); } catch {}
+      if (!reply.ok) throw new Error((payload && payload.error) || "Server error (HTTP " + reply.status + ")");
+      if (!payload || typeof payload !== "object") throw new Error("Server error (HTTP " + reply.status + ")");
+      data = payload;
     }
     const prior = track.value;
     const session = data.session;
@@ -216,14 +251,15 @@ async function loadSession() {
       ...(session.return_tracks || []).map(name => ({name})),
     ];
     track.replaceChildren(...tracks.map((item, i) => {
-      const key = i >= session.tracks.length ? "return:" + i + ":" + item.name
+      const key = i >= session.tracks.length ? "return:" + item.name
         : "track:" + (item.id == null ? i + ":" + item.name : session.snapshot_scope + ":" + item.id);
       return new Option(item.name, key);
     }));
     if ([...track.options].some(item => item.value === prior)) track.value = prior;
+    pruneRoleKeys();
     applySavedRole();
     status.textContent = (data.demo ? "Demo set" : "Live session") + " · " +
-      session.tempo + " BPM · " + tracks.length + " channels";
+      Math.round(session.tempo) + " BPM · " + tracks.length + " channels";
     render();
   } catch (error) {
     status.textContent = (tracks.length ? "Showing the previous snapshot. " : "") + error.message;
@@ -234,14 +270,26 @@ async function loadSession() {
 const store = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
   set(key, value) { try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch {} },
+  keys() { try { return Object.keys(localStorage); } catch { return []; } },
+  remove(key) { try { localStorage.removeItem(key); } catch {} },
 };
 const savedRoleKey = () => "caddy.role:" + track.value;
+function pruneRoleKeys() {
+  // Drop role keys for tracks that no longer exist. One sweep; only our own prefixes.
+  const valid = new Set([...track.options].map(item => item.value));
+  for (const key of store.keys()) {
+    if (key.startsWith("caddy.role:") && !valid.has(key.slice("caddy.role:".length))) store.remove(key);
+  }
+}
 function applySavedRole() {
   const saved = store.get(savedRoleKey());
   role.value = saved && [...role.options].some(o => o.value === saved) ? saved : "auto";
 }
 track.addEventListener("change", () => {applySavedRole(); render();});
-role.addEventListener("change", () => {store.set(savedRoleKey(), role.value === "auto" ? null : role.value); render();});
+role.addEventListener("change", () => {
+  if (track.value) store.set(savedRoleKey(), role.value === "auto" ? null : role.value);
+  render();
+});
 focus.addEventListener("change", () => {store.set("caddy.focus", focus.value); render();});
 refresh.addEventListener("click", loadSession);
 el("export").addEventListener("click", () => {
@@ -266,8 +314,10 @@ el("export").addEventListener("click", () => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\n")], {type: "text/markdown"}));
   a.download = "caddy-notes.md";
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 });
 copy.addEventListener("click", async () => {
   try {
